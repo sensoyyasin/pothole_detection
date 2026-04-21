@@ -1,22 +1,47 @@
-# Pothole detection with Lidar + Camera
-YOLOv8 and point cloud fusion for enhanced road pothole detection and quantification
+# Pothole detection with LiDAR + Camera
 
-Dataset -> 20260407052256
+YOLOv8 and point cloud fusion for road pothole detection and depth estimation.
 
-Manual:
-image_info.py -> Total frames : 125, Duration     : 37.2 seconds, FPS          : 3.4
+Dataset → `20260407052256`
 
-calibration.py -> Fisheye to normal image 
+---
 
-image_coder.py -> convert to the normal image (! problematic, we're using blur it should be changed)
+## Manual
 
-lidar_bag_info.py -> info function Point count , First point
+- **image_info.py**  
+  Total frames: 125  
+  Duration: 37.2 seconds  
+  FPS: 3.4  
 
-lidar_bag.py -> Reading LiDAR scans... through lidar_bag file. and convert 
+- **calibration.py**  
+  Converts fisheye images to normal images  
 
-open3d_test.py -> Detect Potholes (Red) through the 256_road_clean.ply - plane fitting + local comparison + DBSCAN
+- **image_coder.py**  
+  Converts images to normal format  
+  (currently uses blur → needs improvement)
 
-train.py -> uses pretrained model - cazzz307/Pothole-Finetuned-YoloV8- (https://huggingface.co/cazzz307/Pothole-Finetuned-YoloV8/blob/main/Yolov8-fintuned-on-potholes.pt)
+- **lidar_bag_info.py**  
+  Prints basic LiDAR info (point count, first point, etc.)
+
+- **lidar_bag.py**  
+  Reads LiDAR `.bag` file and converts it into usable data  
+
+- **open3d_test.py**  
+  Detects potholes from `256_road_clean.ply`  
+  Uses plane fitting + local comparison + DBSCAN  
+  Outputs pothole regions as red points  
+
+- **train.py**  
+  Runs YOLOv8 with a pretrained pothole model  
+  Model: https://huggingface.co/cazzz307/Pothole-Finetuned-YoloV8/blob/main/Yolov8-fintuned-on-potholes.pt  
+
+---
+
+## Idea
+
+LiDAR → finds geometric pothole candidates (red points)  
+YOLO → finds potholes in image  
+Final → overlap of both = more reliable detection
 
 
 Frames : <img width="726" height="549" alt="Ekran Resmi 2026-04-20 18 13 07" src="https://github.com/user-attachments/assets/8bd49da8-7a69-475c-b911-dd8cdf5ac725" />
