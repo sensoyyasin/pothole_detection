@@ -47,7 +47,6 @@ Final → overlap of both = more reliable detection
 Final_result from cloud compare : <img width="1259" height="539" alt="Ekran Resmi 2026-04-20 18 18 40" src="https://github.com/user-attachments/assets/c6c4632d-2597-4feb-bb65-d44192ad93b6" />
 
 <pre>
-```text
 [INFO] Raw points: 2,929,160
 [INFO] After voxel downsample: 334,130
 [INFO] After outlier removal: 330,950
