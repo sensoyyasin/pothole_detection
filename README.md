@@ -44,7 +44,17 @@ YOLO → finds potholes in image
 Final → overlap of both = more reliable detection
 
 
-Final_result from cloud compare : <img width="1259" height="539" alt="Ekran Resmi 2026-04-20 18 18 40" src="https://github.com/user-attachments/assets/c6c4632d-2597-4feb-bb65-d44192ad93b6" />
+Final_result from cloud compare : 
+
+1 - <img width="1259" height="539" alt="Ekran Resmi 2026-04-20 18 18 40" src="https://github.com/user-attachments/assets/c6c4632d-2597-4feb-bb65-d44192ad93b6" />
+
+2 - <img width="513" height="183" alt="Ekran Resmi 2026-04-20 18 20 56" src="https://github.com/user-attachments/assets/9e29ff1e-44f0-4a30-bd22-357553c3ffcd" />
+
+3 - <img width="857" height="153" alt="Ekran Resmi 2026-04-20 18 21 28" src="https://github.com/user-attachments/assets/88f2222f-2597-4ebc-a02f-3e658ae37ccc" />
+
+4 - <img width="735" height="238" alt="Ekran Resmi 2026-04-20 18 21 45" src="https://github.com/user-attachments/assets/d21f4374-b726-4dbe-9e49-ca0aae5b506e" />
+
+
 
 <pre>
 [INFO] Raw points: 2,929,160
