@@ -8,8 +8,8 @@ import os
 
 typestore = get_typestore(Stores.ROS1_NOETIC)
 
-BAG_PATH = "/Users/yasinsensoy/Desktop/File/20260407052256/IMAGE_20260407052256_0.bag"
-output_dir = "/Users/yasinsensoy/Desktop/File/frames"
+BAG_PATH = "your_bag_path"
+output_dir = "your_output_dir"
 os.makedirs(output_dir, exist_ok=True)
 
 with Reader(BAG_PATH) as reader:
