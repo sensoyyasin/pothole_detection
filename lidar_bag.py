@@ -3,8 +3,8 @@ from rosbags.typesys import Stores, get_typestore, get_types_from_msg
 import numpy as np
 import os
 
-BAG_PATH = "/Users/yasinsensoy/Desktop/File/20260407052256/LIDAR_20260407052256_0.bag"
-IMAGE_BAG = "/Users/yasinsensoy/Desktop/File/20260407052256/IMAGE_20260407052256_0.bag"
+BAG_PATH = "your_bag_path"
+IMAGE_BAG = "your_image_bag_path"
 
 typestore = get_typestore(Stores.ROS1_NOETIC)
 
