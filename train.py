@@ -2,10 +2,10 @@ from ultralytics import YOLO
 import cv2
 import os
 
-model = YOLO("/Users/yasinsensoy/Desktop/File/Yolov8-fintuned-on-potholes.pt")
+model = YOLO("your_model.pt")
 
-frames_dir = "/Users/yasinsensoy/Desktop/File/frames_undistorted"
-output_dir = "/Users/yasinsensoy/Desktop/File/detections_clean"
+frames_dir = "your_frame_path"
+output_dir = "your_output_dir"
 os.makedirs(output_dir, exist_ok=True)
 
 filenames = sorted(
