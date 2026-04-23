@@ -3,7 +3,7 @@ import numpy as np
 import json
 import os
 
-with open("/Users/yasinsensoy/Desktop/File/20260407052256/calibration/calib.json") as f:
+with open("your_path") as f:
     calib = json.load(f)
 
 front = calib["camera_info"]["front"]
@@ -17,8 +17,8 @@ K = np.array([
 
 D = np.array(front["coeff"], dtype=np.float64)
 
-frames_dir = "/Users/yasinsensoy/Desktop/File/frames"
-output_dir = "/Users/yasinsensoy/Desktop/File/frames_undistorted"
+frames_dir = "your_frames_dir"
+output_dir = "your_output_dir"
 os.makedirs(output_dir, exist_ok=True)
 
 filenames = sorted([f for f in os.listdir(frames_dir) if f.endswith(".jpg")])
