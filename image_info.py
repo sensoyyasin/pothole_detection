@@ -1,6 +1,6 @@
 from rosbags.rosbag1 import Reader
 
-BAG_PATH = "/Users/yasinsensoy/Desktop/File/20260407052256/IMAGE_20260407052256_0.bag"
+BAG_PATH = "your_bag_path"
 
 with Reader(BAG_PATH) as reader:
     connections = [c for c in reader.connections
