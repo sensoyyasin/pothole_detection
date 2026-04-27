@@ -1,0 +1,3 @@
+/Users/armagansisik/Desktop/pothole/build/CMakeFiles/pothole_detection.dir
+/Users/armagansisik/Desktop/pothole/build/CMakeFiles/edit_cache.dir
+/Users/armagansisik/Desktop/pothole/build/CMakeFiles/rebuild_cache.dir
