@@ -9,25 +9,25 @@
 #include <pcl/point_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/search/kdtree.h>
-#include <pcl/features/normal_3d.h>
 
 // ───────────────── CONFIG ─────────────────
-const float PLANE_DIST_THR = 0.02f;
+const float PLANE_DIST_THR = 0.02f;   // RANSAC inlier tolerance
 
-const float SEED_THR       = -0.025f;
-const float EXPAND_THR     = -0.01f;
-const float LOCAL_DIFF_THR = 0.015f;
+const float SEED_THR       = -0.025f; // 2.5cm below plane = seed
+const float EXPAND_THR     = -0.01f;  // 1cm below plane = expandable
+const float LOCAL_DIFF_THR = 0.015f;  // local neighborhood difference
 
-const int   K              = 20;
+const int   K              = 20;      // KNN neighbors
 
-const float DBSCAN_EPS     = 0.13f;
-const int   DBSCAN_MIN     = 50;
+const float DBSCAN_EPS     = 0.13f;   // 13cm cluster radius
+const int   DBSCAN_MIN     = 50;      // min points per cluster
+const int   MIN_CLUSTER_PTS= 40;      // min points to report
 
-const float MAX_SLOPE_COS  = 0.94f;
+const float MAX_SLOPE_COS  = 0.94f;   // ~20 deg — rejects steep surfaces
 // ──────────────────────────────────────────
 
 
-// ───────── DBSCAN ─────────
+// ───────── DBSCAN (KD-tree radius search) ─────────
 std::vector<int> dbscan(
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree,
@@ -40,12 +40,12 @@ std::vector<int> dbscan(
     for (int i = 0; i < n; i++) {
         if (labels[i] != -1) continue;
 
-        std::vector<int> nb;
+        std::vector<int>   nb;
         std::vector<float> dist;
         tree->radiusSearch((*cloud)[i], eps, nb, dist);
 
         if ((int)nb.size() < minPts) {
-            labels[i] = -2;
+            labels[i] = -2;  // noise
             continue;
         }
 
@@ -56,15 +56,12 @@ std::vector<int> dbscan(
         while (!q.empty()) {
             int cur = q.front(); q.pop();
 
-            if (labels[cur] == -2)
-                labels[cur] = cid;
-
-            if (labels[cur] != -1)
-                continue;
+            if (labels[cur] == -2) labels[cur] = cid;
+            if (labels[cur] != -1) continue;
 
             labels[cur] = cid;
 
-            std::vector<int> nb2;
+            std::vector<int>   nb2;
             std::vector<float> d2;
             tree->radiusSearch((*cloud)[cur], eps, nb2, d2);
 
@@ -87,87 +84,117 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    // ── Load cloud ──
+    // ── 1. Load ──
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::io::loadPLYFile(argv[1], *cloud);
     int N = cloud->size();
+    std::cout << "Loaded " << N << " points\n";
 
-    std::cout << "Number of points: " << N << "\n";
-
-    // ── Plane fitting ──
+    // ── 2. RANSAC plane fit ──
     pcl::ModelCoefficients::Ptr coeff(new pcl::ModelCoefficients);
     pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
 
     pcl::SACSegmentation<pcl::PointXYZ> seg;
     seg.setModelType(pcl::SACMODEL_PLANE);
     seg.setMethodType(pcl::SAC_RANSAC);
+    seg.setOptimizeCoefficients(true);
     seg.setDistanceThreshold(PLANE_DIST_THR);
     seg.setInputCloud(cloud);
     seg.segment(*inliers, *coeff);
 
-    float a = coeff->values[0];
-    float b = coeff->values[1];
-    float c = coeff->values[2];
-    float d = coeff->values[3];
+    if (inliers->indices.empty()) {
+        std::cerr << "No plane found!\n";
+        return -1;
+    }
 
+    float a = coeff->values[0], b = coeff->values[1],
+          c = coeff->values[2], d = coeff->values[3];
     float norm = std::sqrt(a*a + b*b + c*c);
 
-    Eigen::Vector3f plane_n(a,b,c);
+    Eigen::Vector3f plane_n(a, b, c);
     plane_n.normalize();
 
-    // ── KNN ──
+    std::cout << "Plane: " << a << "x + " << b
+              << "y + " << c << "z + " << d << " = 0\n";
+
+    // ── 3. KNN ──
     pcl::search::KdTree<pcl::PointXYZ> kdtree;
     kdtree.setInputCloud(cloud);
 
     std::vector<std::vector<int>> knn(N);
     for (int i = 0; i < N; i++) {
-        std::vector<int> idx(K);
+        std::vector<int>   idx(K);
         std::vector<float> d2(K);
         kdtree.nearestKSearch((*cloud)[i], K, idx, d2);
         knn[i] = idx;
     }
 
-    // ── Distance + slope filter ──
+    // ── 4. Signed distances ──
     std::vector<float> dist(N);
-    std::vector<bool> valid(N, true);
-
     for (int i = 0; i < N; i++) {
         auto& p = (*cloud)[i];
         dist[i] = (a*p.x + b*p.y + c*p.z + d) / norm;
     }
 
-    // ── Local smoothness ──
-    std::vector<bool> local(N,false);
+    // ── 5. Slope filter — reject steep surfaces (curbs, walls) ──
+    // Estimate local normal per point using KNN, compare to plane normal
+    std::vector<bool> flat(N, true);
     for (int i = 0; i < N; i++) {
-        float mean = 0;
-        for (int nb : knn[i]) mean += dist[nb];
+        // Build local covariance matrix from neighbors
+        Eigen::Vector3f mean(0,0,0);
+        for (int nb : knn[i]) {
+            auto& p = (*cloud)[nb];
+            mean += Eigen::Vector3f(p.x, p.y, p.z);
+        }
         mean /= K;
 
-        if (dist[i] < mean - LOCAL_DIFF_THR)
+        Eigen::Matrix3f cov = Eigen::Matrix3f::Zero();
+        for (int nb : knn[i]) {
+            auto& p = (*cloud)[nb];
+            Eigen::Vector3f v(p.x - mean.x(), p.y - mean.y(), p.z - mean.z());
+            cov += v * v.transpose();
+        }
+
+        // Smallest eigenvector = local normal
+        Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> solver(cov);
+        Eigen::Vector3f local_n = solver.eigenvectors().col(0);
+        local_n.normalize();
+
+        // If local normal deviates too much from road plane → steep surface
+        float cos_angle = std::abs(local_n.dot(plane_n));
+        if (cos_angle < MAX_SLOPE_COS)
+            flat[i] = false;  // reject: wall, curb, steep edge
+    }
+
+    // ── 6. Local smoothness ──
+    std::vector<bool> local(N, false);
+    for (int i = 0; i < N; i++) {
+        if (!flat[i]) continue;  // skip steep points
+        float mean_d = 0;
+        for (int nb : knn[i]) mean_d += dist[nb];
+        mean_d /= K;
+        if (dist[i] < mean_d - LOCAL_DIFF_THR)
             local[i] = true;
     }
 
-    // ── Seed (FIXED) ──
-    std::vector<bool> seed(N,false), expand(N,false);
-
-    for (int i = 0; i < N; i++) {
-        if (dist[i] < SEED_THR)
+    // ── 7. Seed mask ──
+    std::vector<bool> seed(N, false);
+    for (int i = 0; i < N; i++)
+        if (flat[i] && dist[i] < SEED_THR)
             seed[i] = true;
-    }
 
-    // ── Expansion (local used here, NOT in seed) ──
+    // ── 8. Expand mask ──
+    std::vector<bool> expand(N, false);
     for (int i = 0; i < N; i++) {
-        if (seed[i]) continue;
-
+        if (seed[i] || !flat[i]) continue;
         int cnt = 0;
         for (int nb : knn[i])
             if (seed[nb]) cnt++;
-
         if (cnt > 0.3*K && dist[i] < EXPAND_THR && local[i])
             expand[i] = true;
     }
 
-    // ── Candidate cloud ──
+    // ── 9. Candidate cloud ──
     pcl::PointCloud<pcl::PointXYZ>::Ptr cand(new pcl::PointCloud<pcl::PointXYZ>);
     std::vector<int> map_idx;
 
@@ -177,62 +204,79 @@ int main(int argc, char** argv)
             map_idx.push_back(i);
         }
     }
-
     std::cout << "Candidate points: " << cand->size() << "\n";
 
-    // ── DBSCAN ──
+    if (cand->empty()) {
+        std::cout << "No potholes detected\n";
+        return 0;
+    }
+
+    // ── 10. DBSCAN ──
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
     tree->setInputCloud(cand);
 
-    auto labels = dbscan(cand, tree, DBSCAN_EPS, DBSCAN_MIN);
+    auto labels   = dbscan(cand, tree, DBSCAN_EPS, DBSCAN_MIN);
     int max_label = *std::max_element(labels.begin(), labels.end());
 
-    std::vector<std::array<uint8_t,3>> colors(N, {150,150,150});
+    std::vector<std::array<uint8_t,3>> colors(N, {150, 150, 150});
+    int valid = 0;
 
-    // ── Output ──
+    std::cout << "\n=== POTHOLE DETECTION RESULTS ===\n";
+
     for (int cid = 0; cid <= max_label; cid++) {
-
         std::vector<int> pts;
-        for (int i = 0; i < labels.size(); i++)
+        for (int i = 0; i < (int)labels.size(); i++)
             if (labels[i] == cid)
                 pts.push_back(i);
 
-        if (pts.size() < 40) continue;
+        if ((int)pts.size() < MIN_CLUSTER_PTS) continue;
+
+        valid++;
 
         Eigen::Vector3f center(0,0,0);
-        float max_depth = 0;
-        float volume = 0;
+        Eigen::Vector3f mn(1e9,1e9,1e9), mx(-1e9,-1e9,-1e9);
+        float max_depth = 0, volume = 0;
 
         for (int i : pts) {
             int orig = map_idx[i];
-            auto& p = (*cloud)[orig];
+            auto& p  = (*cloud)[orig];
+            Eigen::Vector3f pv(p.x, p.y, p.z);
 
-            center += Eigen::Vector3f(p.x,p.y,p.z);
+            center   += pv;
+            mn        = mn.cwiseMin(pv);
+            mx        = mx.cwiseMax(pv);
 
             float depth = std::abs(dist[orig]);
-            max_depth = std::max(max_depth, depth);
+            max_depth   = std::max(max_depth, depth);
 
             float area = DBSCAN_EPS * DBSCAN_EPS / pts.size();
-            volume += depth * area;
+            volume    += depth * area;
 
-            colors[orig] = {255,0,0};
+            colors[orig] = {255, 0, 0};
         }
 
         center /= pts.size();
-        float liters = volume * 1000.0f;
+        float liters    = volume * 1000.0f;
+        float depth_cm  = max_depth * 100.0f;
+        float width_cm  = (mx.x() - mn.x()) * 100.0f;
+        float length_cm = (mx.y() - mn.y()) * 100.0f;
 
         printf(
-            "Pothole #%d | Points: %zu | Center: (%.3f, %.3f, %.3f) | "
-            "MaxDepth: %.4f m | Volume: %.4f m^3 | %.2f L\n",
-            cid, pts.size(),
+            "Pothole #%02d | Points: %zu | "
+            "Center: (%.3f, %.3f, %.3f) | "
+            "Depth: %.1f cm | Width: %.1f cm | Length: %.1f cm | "
+            "Volume: %.4f m^3 (%.2f L)\n",
+            valid, pts.size(),
             center.x(), center.y(), center.z(),
-            max_depth, volume, liters
+            depth_cm, width_cm, length_cm,
+            volume, liters
         );
     }
 
-    // ── Save ──
-    std::ofstream out("detected.ply");
+    std::cout << "\nTotal potholes: " << valid << "\n";
 
+    // ── 11. Save PLY ──
+    std::ofstream out("detected.ply");
     out << "ply\nformat ascii 1.0\n";
     out << "element vertex " << N << "\n";
     out << "property float x\nproperty float y\nproperty float z\n";
@@ -247,5 +291,6 @@ int main(int argc, char** argv)
             << (int)colors[i][2] << "\n";
     }
 
-    std::cout << "Saved detected.ply\n";
+    std::cout << "Saved: detected.ply\n";
+    return 0;
 }
